@@ -18,6 +18,8 @@ A command-line utility to manage MLX models between your Hugging Face cache and 
 
 ## Installation
 
+You can skip this if you are using uvx remote execution (see below).
+
 1. Clone this repository:
 ```bash
 git clone https://github.com/ivanfioravanti/lmstudio_hf.git
@@ -30,6 +32,11 @@ Run the script using Python:
 
 ```bash
 python lmstudio_hf.py
+```
+
+Alternatively, you can use uvx remote execution:
+```bash
+uvx git+https://github.com/ivanfioravanti/lmstudio_hf
 ```
 
 ### Navigation Controls

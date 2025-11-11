@@ -131,6 +131,9 @@ def manage_models():
             
             print(f"Imported {model_name} (symlinked files)")
 
-if __name__ == "__main__":
+def main():
+    """Entry point for uvx execution"""
     manage_models()
 
+if __name__ == "__main__":
+    main()

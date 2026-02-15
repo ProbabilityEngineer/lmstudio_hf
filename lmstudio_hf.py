@@ -15,7 +15,7 @@ def _cache_search_roots(cache_dir: Path):
 
 
 def _discover_hf_models(cache_dir: Path):
-    """Discover cached Hugging Face models with a readable config.json."""
+    """Discover cached Hugging Face models limited to MLX or GGUF formats."""
     found_models = set()
 
     for root in _cache_search_roots(cache_dir):
@@ -27,35 +27,57 @@ def _discover_hf_models(cache_dir: Path):
             if not snapshots_dir.exists():
                 continue
 
-            config_found = False
-            model_type = "unknown"
             snapshot_path = None
+            model_type = None
 
-            for snapshot_dir in snapshots_dir.iterdir():
+            repo_name = repo_dir.name.removeprefix("models--")
+            repo_name_lower = repo_name.lower()
+
+            for snapshot_dir in sorted(snapshots_dir.iterdir()):
                 if not snapshot_dir.is_dir():
                     continue
 
-                # Most repos keep config.json at snapshot root, but some nest it.
+                # GGUF models are identified by .gguf weights in the snapshot tree.
+                if any(p.is_file() for p in snapshot_dir.rglob("*.gguf")):
+                    snapshot_path = snapshot_dir
+                    model_type = "gguf"
+                    break
+
+                # MLX models: either repo naming suggests MLX, or snapshot has
+                # MLX-like safetensors artifacts with no legacy framework weights.
                 config_candidates = [snapshot_dir / "config.json", *snapshot_dir.rglob("config.json")]
+                config_data = None
                 for config_path in config_candidates:
                     if not config_path.exists():
                         continue
                     try:
                         with open(config_path) as f:
-                            config = json.load(f)
-                        model_type = config.get("model_type", "unknown").lower() or "unknown"
-                        snapshot_path = config_path.parent
-                        config_found = True
+                            config_data = json.load(f)
                         break
                     except (json.JSONDecodeError, FileNotFoundError):
                         continue
-                if config_found:
+
+                if not config_data:
+                    continue
+
+                has_safetensors = any(p.is_file() for p in snapshot_dir.rglob("*.safetensors"))
+                has_legacy_weights = any(
+                    p.is_file()
+                    for ext in ("*.bin", "*.pt", "*.pth", "*.ckpt", "*.h5", "*.msgpack")
+                    for p in snapshot_dir.rglob(ext)
+                )
+                is_mlx_repo = "mlx" in repo_name_lower
+                looks_like_mlx = is_mlx_repo or (has_safetensors and not has_legacy_weights)
+
+                if looks_like_mlx:
+                    base_type = str(config_data.get("model_type", "")).lower().strip()
+                    model_type = f"mlx:{base_type}" if base_type else "mlx"
+                    snapshot_path = snapshot_dir
                     break
 
-            if not config_found or not snapshot_path:
+            if not snapshot_path or not model_type:
                 continue
 
-            repo_name = repo_dir.name.removeprefix("models--")
             model_name = repo_name.replace("--", "/")
             if model_name:
                 found_models.add((model_type, model_name, snapshot_path))
@@ -109,7 +131,7 @@ def get_key():
     return ch
 
 def manage_models():
-    "Import MLX models from the Hugging Face cache."
+    "Import MLX and GGUF models from the Hugging Face cache."
     cache_dir = Path(
         os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     )
@@ -118,7 +140,7 @@ def manage_models():
     found_models = _discover_hf_models(cache_dir)
 
     if not found_models:
-        print("No compatible models found in Hugging Face cache")
+        print("No MLX or GGUF models found in Hugging Face cache")
         return
 
     # Create list of models with their current import status

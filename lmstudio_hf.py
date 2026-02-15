@@ -4,6 +4,64 @@ from pathlib import Path
 import sys
 import shutil
 
+
+def _cache_search_roots(cache_dir: Path):
+    """Return candidate roots that may contain Hugging Face cached repos."""
+    roots = [cache_dir]
+    hub_dir = cache_dir / "hub"
+    if hub_dir.exists():
+        roots.append(hub_dir)
+    return roots
+
+
+def _discover_hf_models(cache_dir: Path):
+    """Discover cached Hugging Face models with a readable config.json."""
+    found_models = set()
+
+    for root in _cache_search_roots(cache_dir):
+        for repo_dir in root.glob("models--*"):
+            if not repo_dir.is_dir():
+                continue
+
+            snapshots_dir = repo_dir / "snapshots"
+            if not snapshots_dir.exists():
+                continue
+
+            config_found = False
+            model_type = "unknown"
+            snapshot_path = None
+
+            for snapshot_dir in snapshots_dir.iterdir():
+                if not snapshot_dir.is_dir():
+                    continue
+
+                # Most repos keep config.json at snapshot root, but some nest it.
+                config_candidates = [snapshot_dir / "config.json", *snapshot_dir.rglob("config.json")]
+                for config_path in config_candidates:
+                    if not config_path.exists():
+                        continue
+                    try:
+                        with open(config_path) as f:
+                            config = json.load(f)
+                        model_type = config.get("model_type", "unknown").lower() or "unknown"
+                        snapshot_path = config_path.parent
+                        config_found = True
+                        break
+                    except (json.JSONDecodeError, FileNotFoundError):
+                        continue
+                if config_found:
+                    break
+
+            if not config_found or not snapshot_path:
+                continue
+
+            repo_name = repo_dir.name.removeprefix("models--")
+            model_name = repo_name.replace("--", "/")
+            if model_name:
+                found_models.add((model_type, model_name, snapshot_path))
+
+    return found_models
+
 def select_models(model_choices):
     selected = [False] * len(model_choices)
     idx = 0
@@ -56,43 +114,11 @@ def manage_models():
         os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     )
     lm_studio_dir = Path(os.path.expanduser("~/.cache/lm-studio/models"))
-    
-    found_models = set()
-    for root, dirs, _ in os.walk(cache_dir):
-        for d in dirs:
-            if "mlx-community" in d:
-                model_dir = Path(root) / d
-                snapshots_dir = model_dir / "snapshots"
-                if not snapshots_dir.exists():
-                    continue
 
-                # Search for config.json in any subfolder under snapshots
-                config_found = False
-                snapshot_path = None
-                for config_root, _, config_files in os.walk(snapshots_dir):
-                    if "config.json" in config_files:
-                        config_path = Path(config_root) / "config.json"
-                        try:
-                            with open(config_path) as f:
-                                config = json.load(f)
-                                model_type = config.get("model_type", "").lower()
-                                config_found = True
-                                snapshot_path = Path(config_root)
-                                break
-                        except (json.JSONDecodeError, FileNotFoundError):
-                            continue
-
-                if not config_found or not snapshot_path:
-                    continue
-                    
-                parts = d.split("--")
-                model_name = "/".join(parts[1:])
-                if model_name:
-                    # Store model_type, model_name, and snapshot_path
-                    found_models.add((model_type, model_name, snapshot_path))
+    found_models = _discover_hf_models(cache_dir)
 
     if not found_models:
-        print("No MLX models found in Hugging Face cache")
+        print("No compatible models found in Hugging Face cache")
         return
 
     # Create list of models with their current import status

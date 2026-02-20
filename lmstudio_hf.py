@@ -154,6 +154,7 @@ def manage_models():
         os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     )
     lm_studio_dir = _resolve_lm_studio_models_dir()
+    print(f"LM Studio models directory: {lm_studio_dir}")
 
     found_models = _discover_hf_models(cache_dir)
 
@@ -189,10 +190,14 @@ def manage_models():
         else:
             # Create parent directories and target directory
             target_path.mkdir(parents=True, exist_ok=True)
+            print(f"Importing {model_name}")
+            print(f"  HF snapshot source: {snapshot_path}")
+            print(f"  LM Studio target:  {target_path}")
             
             # Create symbolic links for all files in the snapshot directory
             for item in snapshot_path.iterdir():
                 link_path = target_path / item.name
+                print(f"  ln -s {item} {link_path}")
                 os.symlink(item, link_path)
             
             print(f"Imported {model_name} (symlinked files)")

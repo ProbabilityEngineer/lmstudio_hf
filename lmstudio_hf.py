@@ -173,6 +173,12 @@ def manage_models():
     # Show interactive selection menu
     selected = select_models(model_choices)
     print("\nImporting models...\n")
+
+    if not selected:
+        print("No models selected. Nothing to import.")
+        return
+
+    print(f"LM Studio models directory: {lm_studio_dir}")
     
     for display_name, model_name, is_imported, snapshot_path in selected:
         target_path = lm_studio_dir / f"{model_name}"
@@ -189,10 +195,14 @@ def manage_models():
         else:
             # Create parent directories and target directory
             target_path.mkdir(parents=True, exist_ok=True)
+            print(f"Importing {model_name}")
+            print(f"  HF snapshot source: {snapshot_path}")
+            print(f"  LM Studio target:  {target_path}")
             
             # Create symbolic links for all files in the snapshot directory
             for item in snapshot_path.iterdir():
                 link_path = target_path / item.name
+                print(f"  ln -s {item} {link_path}")
                 os.symlink(item, link_path)
             
             print(f"Imported {model_name} (symlinked files)")

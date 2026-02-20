@@ -154,7 +154,6 @@ def manage_models():
         os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     )
     lm_studio_dir = _resolve_lm_studio_models_dir()
-    print(f"LM Studio models directory: {lm_studio_dir}")
 
     found_models = _discover_hf_models(cache_dir)
 
@@ -174,6 +173,12 @@ def manage_models():
     # Show interactive selection menu
     selected = select_models(model_choices)
     print("\nImporting models...\n")
+
+    if not selected:
+        print("No models selected. Nothing to import.")
+        return
+
+    print(f"LM Studio models directory: {lm_studio_dir}")
     
     for display_name, model_name, is_imported, snapshot_path in selected:
         target_path = lm_studio_dir / f"{model_name}"

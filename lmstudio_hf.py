@@ -84,6 +84,24 @@ def _discover_hf_models(cache_dir: Path):
 
     return found_models
 
+
+def _resolve_lm_studio_models_dir() -> Path:
+    """Return LM Studio models directory from settings, or fallback default."""
+    fallback = Path(os.path.expanduser("~/.cache/lm-studio/models"))
+    settings_path = Path(os.path.expanduser("~/.lmstudio/settings.json"))
+
+    try:
+        with settings_path.open() as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return fallback
+
+    configured_path = settings.get("downloadsFolder")
+    if not isinstance(configured_path, str) or not configured_path.strip():
+        return fallback
+
+    return Path(os.path.expanduser(configured_path))
+
 def select_models(model_choices):
     selected = [False] * len(model_choices)
     idx = 0
@@ -135,7 +153,7 @@ def manage_models():
     cache_dir = Path(
         os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
     )
-    lm_studio_dir = Path(os.path.expanduser("~/.cache/lm-studio/models"))
+    lm_studio_dir = _resolve_lm_studio_models_dir()
 
     found_models = _discover_hf_models(cache_dir)
 
